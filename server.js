@@ -6,34 +6,36 @@ const app = express();
 app.use(cors());
 
 // -------------------------------
-// YOUR METALS API KEY INSERTED
+// YOUR METALS API KEY
 // -------------------------------
 const METALS_API_KEY = "l0q34s9bm33e87c62lp8wzlnd8v78vzn20nlgek1cis2w5da04n237btojxw";
 
-// -------------------------------
-// 1) METALS PRICES (Gold, Silver, Copper, Nickel)
-// -------------------------------
+// --------------------------------
+// 1) METALS (Gold, Silver, Copper, Nickel)
+// --------------------------------
 async function getMetals() {
   try {
     const res = await fetch(
-      `https://metals-api.com/api/latest?access_key=${METALS_API_KEY}&base=INR&symbols=XAU,XAG,XCOP,XNIK`
+      `https://metals-api.com/api/latest?access_key=${METALS_API_KEY}&symbols=XAU,XAG,XCU,XNI&base=USD`
     );
     const data = await res.json();
 
+    if (!data.rates) return { error: "MetalsAPI error" };
+
     return {
-      gold: data.rates?.XAU || null,
-      silver: data.rates?.XAG || null,
-      copper: data.rates?.XCOP || null,
-      nickel: data.rates?.XNIK || null,
+      gold: data.rates.XAU || null,
+      silver: data.rates.XAG || null,
+      copper: data.rates.XCU || null,
+      nickel: data.rates.XNI || null,
     };
   } catch (err) {
     return { error: "MetalsAPI error" };
   }
 }
 
-// -------------------------------
-// 2) CRUDE & NATURAL GAS (Yahoo Free)
-// -------------------------------
+// --------------------------------
+// 2) CRUDE + NATURAL GAS
+// --------------------------------
 async function getEnergy() {
   try {
     const res = await fetch(
@@ -45,17 +47,17 @@ async function getEnergy() {
     const ng = data.quoteResponse.result.find(i => i.symbol === "NG=F");
 
     return {
-      crude: crude?.regularMarketPrice || null,
-      natural_gas: ng?.regularMarketPrice || null,
+      crude: crude?.regularMarketPrice ?? null,
+      natural_gas: ng?.regularMarketPrice ?? null,
     };
-  } catch (err) {
-    return { error: "Yahoo Energy error" };
+  } catch {
+    return { crude: null, natural_gas: null };
   }
 }
 
-// -------------------------------
-// 3) NSE INDEX (Nifty, BankNifty)
-// -------------------------------
+// --------------------------------
+// 3) NIFTY + BANKNIFTY
+// --------------------------------
 async function getNSE() {
   try {
     const res = await fetch(
@@ -64,17 +66,17 @@ async function getNSE() {
     const data = await res.json();
 
     return {
-      nifty: data.quoteResponse.result[0]?.regularMarketPrice || null,
-      banknifty: data.quoteResponse.result[1]?.regularMarketPrice || null,
+      nifty: data.quoteResponse.result[0]?.regularMarketPrice ?? null,
+      banknifty: data.quoteResponse.result[1]?.regularMarketPrice ?? null,
     };
-  } catch (err) {
-    return { error: "Yahoo NSE error" };
+  } catch {
+    return { nifty: null, banknifty: null };
   }
 }
 
-// -------------------------------
-// 4) BSE INDEX (Sensex)
-// -------------------------------
+// --------------------------------
+// 4) SENSEX
+// --------------------------------
 async function getBSE() {
   try {
     const res = await fetch(
@@ -83,16 +85,16 @@ async function getBSE() {
     const data = await res.json();
 
     return {
-      sensex: data.quoteResponse.result[0]?.regularMarketPrice || null,
+      sensex: data.quoteResponse.result[0]?.regularMarketPrice ?? null,
     };
-  } catch (err) {
-    return { error: "Yahoo BSE error" };
+  } catch {
+    return { sensex: null };
   }
 }
 
-// -------------------------------
-// COMBINED API ENDPOINT
-// -------------------------------
+// --------------------------------
+// COMBINED API
+// --------------------------------
 app.get("/live-data", async (req, res) => {
   const metals = await getMetals();
   const energy = await getEnergy();
@@ -107,7 +109,6 @@ app.get("/live-data", async (req, res) => {
   });
 });
 
-// -------------------------------
 app.get("/", (req, res) => {
   res.send("Live Price API Running ✔");
 });
