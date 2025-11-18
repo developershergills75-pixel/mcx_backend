@@ -1,90 +1,115 @@
 import express from "express";
-import axios from "axios";
-import * as cheerio from "cheerio";
 import cors from "cors";
+import fetch from "node-fetch";
 
 const app = express();
 app.use(cors());
 
-// ------------------------
-//  MCX URL MAPPING
-// ------------------------
-const mcxUrls = {
-  GOLD: "https://www.moneycontrol.com/commodity/gold-price.html",
-  SILVER: "https://www.moneycontrol.com/commodity/silver-price.html",
-  CRUDEOIL: "https://www.moneycontrol.com/commodity/crude-oil-price.html",
-  NATURALGAS: "https://www.moneycontrol.com/commodity/natural-gas-price.html",
-  COPPER: "https://www.moneycontrol.com/commodity/copper-price.html",
-  ZINC: "https://www.moneycontrol.com/commodity/zinc-price.html",
-  NICKEL: "https://www.moneycontrol.com/commodity/nickel-price.html",
-  LEAD: "https://www.moneycontrol.com/commodity/lead-price.html",
-  ALUMINIUM: "https://www.moneycontrol.com/commodity/aluminium-price.html",
-};
+// -------------------------------
+// YOUR METALS API KEY INSERTED
+// -------------------------------
+const METALS_API_KEY = "l0q34s9bm33e87c62lp8wzlnd8v78vzn20nlgek1cis2w5da04n237btojxw";
 
-// ------------------------
-//  PRICE SCRAPER
-// ------------------------
-async function fetchMCXPrice(symbol) {
-  const url = mcxUrls[symbol];
-  if (!url) return null;
+// -------------------------------
+// 1) METALS PRICES (Gold, Silver, Copper, Nickel)
+// -------------------------------
+async function getMetals() {
+  try {
+    const res = await fetch(
+      `https://metals-api.com/api/latest?access_key=${METALS_API_KEY}&base=INR&symbols=XAU,XAG,XCOP,XNIK`
+    );
+    const data = await res.json();
 
-  const { data } = await axios.get(url);
-  const $ = cheerio.load(data);
-
-  // UNIVERSAL SELECTORS (WORKING 2025)
-  const price =
-    $("span.dpiGreen").first().text().trim() ||
-    $("span.blkGreen").first().text().trim() ||
-    $("span#commodity_live_price").first().text().trim();
-
-  return price || null;
+    return {
+      gold: data.rates?.XAU || null,
+      silver: data.rates?.XAG || null,
+      copper: data.rates?.XCOP || null,
+      nickel: data.rates?.XNIK || null,
+    };
+  } catch (err) {
+    return { error: "MetalsAPI error" };
+  }
 }
 
-// ------------------------
-//  ROUTES
-// ------------------------
-app.get("/", (req, res) => {
-  res.send("✔ MCX Backend Running — GOLD, SILVER, CRUDEOIL, NG, COPPER, ZINC etc.");
-});
-
-// Fetch a single symbol
-app.get("/mcx", async (req, res) => {
-  const symbol = req.query.symbol?.toUpperCase();
-
-  if (!symbol) {
-    return res.json({ error: "Symbol required" });
-  }
-
+// -------------------------------
+// 2) CRUDE & NATURAL GAS (Yahoo Free)
+// -------------------------------
+async function getEnergy() {
   try {
-    const price = await fetchMCXPrice(symbol);
+    const res = await fetch(
+      "https://query1.finance.yahoo.com/v7/finance/quote?symbols=CL=F,NG=F"
+    );
+    const data = await res.json();
 
-    res.json({
-      symbol,
-      price,
-      timestamp: new Date().toISOString(),
-    });
+    const crude = data.quoteResponse.result.find(i => i.symbol === "CL=F");
+    const ng = data.quoteResponse.result.find(i => i.symbol === "NG=F");
+
+    return {
+      crude: crude?.regularMarketPrice || null,
+      natural_gas: ng?.regularMarketPrice || null,
+    };
   } catch (err) {
-    res.json({ error: err.message });
+    return { error: "Yahoo Energy error" };
   }
-});
+}
 
-// Fetch ALL MCX symbols at once (useful for your watchlist)
-app.get("/mcx/all", async (req, res) => {
-  const results = {};
+// -------------------------------
+// 3) NSE INDEX (Nifty, BankNifty)
+// -------------------------------
+async function getNSE() {
+  try {
+    const res = await fetch(
+      "https://query1.finance.yahoo.com/v7/finance/quote?symbols=^NSEI,^NSEBANK"
+    );
+    const data = await res.json();
 
-  for (const symbol of Object.keys(mcxUrls)) {
-    try {
-      results[symbol] = await fetchMCXPrice(symbol);
-    } catch {
-      results[symbol] = null;
-    }
+    return {
+      nifty: data.quoteResponse.result[0]?.regularMarketPrice || null,
+      banknifty: data.quoteResponse.result[1]?.regularMarketPrice || null,
+    };
+  } catch (err) {
+    return { error: "Yahoo NSE error" };
   }
+}
+
+// -------------------------------
+// 4) BSE INDEX (Sensex)
+// -------------------------------
+async function getBSE() {
+  try {
+    const res = await fetch(
+      "https://query1.finance.yahoo.com/v7/finance/quote?symbols=^BSESN"
+    );
+    const data = await res.json();
+
+    return {
+      sensex: data.quoteResponse.result[0]?.regularMarketPrice || null,
+    };
+  } catch (err) {
+    return { error: "Yahoo BSE error" };
+  }
+}
+
+// -------------------------------
+// COMBINED API ENDPOINT
+// -------------------------------
+app.get("/live-data", async (req, res) => {
+  const metals = await getMetals();
+  const energy = await getEnergy();
+  const nse = await getNSE();
+  const bse = await getBSE();
 
   res.json({
-    data: results,
-    timestamp: new Date().toISOString(),
+    status: "success",
+    updated: new Date(),
+    mcx: { ...metals, ...energy },
+    indices: { ...nse, ...bse },
   });
 });
 
-// ------------------------
-app.listen(3000, () => console.log("MCX Backend Live on PORT 3000"));
+// -------------------------------
+app.get("/", (req, res) => {
+  res.send("Live Price API Running ✔");
+});
+
+app.listen(3000, () => console.log("Server running on port 3000"));
